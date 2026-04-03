@@ -78,3 +78,7 @@ pip install -r requirements.txt
 # Run the server
 uvicorn app.main:app --reload
 ```
+
+## Agentic Development
+
+This project includes a `CLAUDE.md` file that provides AI coding agents (Claude Code, Cursor, Copilot, etc.) with the context they need to make correct changes: architecture rules, directory conventions, common commands, and code style guidelines. When adding new domains, conventions, or non-obvious patterns, update `CLAUDE.md` so agents stay aligned with the project's expectations.
