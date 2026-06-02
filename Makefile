@@ -1,5 +1,5 @@
 .PHONY: help install dev-setup dev test test-unit test-integration lint fmt typecheck \
-        migrate migration docker-build docker-up docker-down clean
+        migrate migration up down nuke clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,14 +41,14 @@ migration: ## Create a new auto-generated migration: `make migration m="add foo 
 	@if [ -z "$(m)" ]; then echo "Usage: make migration m=\"description\""; exit 1; fi
 	uv run alembic revision --autogenerate -m "$(m)"
 
-docker-build: ## Build the Docker image
-	docker compose build
-
-docker-up: ## Start the Docker stack (Postgres + app) in the background
+up: ## Start the stack (Postgres + app) in the background; rebuilds if needed
 	docker compose up -d --build
 
-docker-down: ## Stop the Docker stack and remove volumes
-	docker compose down -v
+down: ## Stop the stack (containers + network); preserves volumes
+	docker compose down
+
+nuke: ## Remove this project's containers, network, volumes, and built image
+	docker compose down -v --rmi all --remove-orphans
 
 clean: ## Remove caches, coverage, and local DB files
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage coverage.xml
