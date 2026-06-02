@@ -17,8 +17,7 @@ class UserRepository:
 
     async def create(self, user: User) -> User:
         self.db.add(user)
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.db.flush()
         return user
 
     async def list_all(self) -> list[User]:
