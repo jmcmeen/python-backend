@@ -94,4 +94,4 @@ Initial release of the layered FastAPI backend template. Companion to [The Archi
 - CC0 1.0 `LICENSE`.
 
 [0.2.0]: #020---2026-06-01
-[0.1.0]: #010---2026-05-31
+[0.1.0]: #010---2026-04-03
