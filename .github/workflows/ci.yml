@@ -13,8 +13,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -51,8 +51,8 @@ jobs:
       SECRET_KEY: ci-only-not-a-real-secret-for-tests
       DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgresql+asyncpg://test:test@localhost:5432/test' || 'sqlite+aiosqlite:///./test.db' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --frozen
