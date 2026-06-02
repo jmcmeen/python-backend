@@ -1,7 +1,6 @@
 import pytest
 import pytest_asyncio
 
-from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.schemas.user import UserCreate
 from app.services.user_service import UserService

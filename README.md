@@ -1,8 +1,8 @@
 # Python Backend Template
 
-A clean, layered architecture template for Python backend projects built with FastAPI.
+A clean, layered architecture template for Python backend projects built with FastAPI — now packaged for 2026 with `uv`, Docker, Postgres, and a strict CI gate.
 
-Based on the blueprint described in [The Architecture Blueprint Every Python Backend Project Needs](https://medium.com/the-pythonworld/the-architecture-blueprint-every-python-backend-project-needs-207216931123).
+Based on the blueprint described in [The Architecture Blueprint Every Python Backend Project Needs](https://medium.com/the-pythonworld/the-architecture-blueprint-every-python-backend-project-needs-207216931123). A follow-up post on the upgrades in v0.2 is in progress.
 
 ## Project Structure
 
@@ -11,11 +11,15 @@ app/
 ├── api/
 │   └── v1/
 │       ├── endpoints/       # Route handlers (thin wrappers, no business logic)
+│       │   ├── health.py    # /health and /ready
 │       │   └── user.py
-│       └── dependencies.py  # Dependency injection (auth, DB sessions, etc.)
+│       └── dependencies.py  # Dependency injection (Annotated[..., Depends(...)])
 ├── core/
-│   ├── config.py            # App settings via Pydantic BaseSettings + .env
-│   └── security.py          # JWT, authentication, CORS setup
+│   ├── config.py            # Pydantic BaseSettings + SecretStr + placeholder rejection
+│   ├── database.py          # Async engine, session, commit-on-success boundary
+│   ├── logging.py           # structlog: JSON in prod, console in dev
+│   ├── middleware.py        # Request-ID middleware
+│   └── security.py          # JWT via PyJWT
 ├── models/
 │   └── user.py              # SQLAlchemy ORM models (database schema)
 ├── schemas/
@@ -23,16 +27,25 @@ app/
 ├── services/
 │   └── user_service.py      # Business logic (framework-independent, testable)
 ├── repositories/
-│   └── user_repo.py         # Data access abstraction (DB queries behind clean methods)
+│   └── user_repo.py         # Data access; commit lives at the session boundary
 ├── utils/
-│   └── hashing.py           # Shared helpers (hashing, email, token generation)
-└── main.py                  # App entrypoint: mount routers, middleware, startup
+│   └── hashing.py           # Shared helpers
+└── main.py                  # Wiring only: routers, middleware, lifespan
+
 tests/
 ├── unit/                    # Isolated tests for services and utilities
 └── integration/             # End-to-end API and database tests
-migrations/                  # Alembic database migrations
-requirements.txt
-.env
+
+migrations/                  # Alembic (async) migrations
+docker/                      # Container entrypoint
+Dockerfile
+docker-compose.yml           # Postgres 17 + app
+Makefile                     # Common dev targets
+pyproject.toml               # PEP 621 metadata + tool config
+uv.lock                      # Reproducible deps
+.pre-commit-config.yaml      # ruff + uv-lock + hygiene hooks
+.github/workflows/ci.yml     # Lint + mypy + pytest matrix (sqlite + postgres)
+.env.example
 ```
 
 ## Architecture Layers
@@ -40,44 +53,81 @@ requirements.txt
 | Layer | Directory | Responsibility |
 |-------|-----------|----------------|
 | **API** | `app/api/` | Accept requests, validate input via schemas, delegate to services, return responses. No business logic. |
-| **Core** | `app/core/` | Centralized config, security, CORS, logging, startup/shutdown handlers. |
-| **Models** | `app/models/` | ORM entity definitions representing database tables. Evolve independently from schemas. |
-| **Schemas** | `app/schemas/` | Pydantic models defining API contracts. Stable interface even as the DB changes. |
-| **Services** | `app/services/` | Business logic. Framework-independent, testable in isolation. One service per domain entity. |
-| **Repositories** | `app/repositories/` | Abstract raw DB operations behind clean methods. Enables swapping databases or mocking in tests. |
+| **Core** | `app/core/` | Centralized config, security, database, logging, middleware. |
+| **Models** | `app/models/` | ORM entity definitions representing database tables. |
+| **Schemas** | `app/schemas/` | Pydantic models defining API contracts. |
+| **Services** | `app/services/` | Business logic. Framework-independent, testable in isolation. |
+| **Repositories** | `app/repositories/` | Data access primitives. The transaction boundary lives in `get_db`, not here. |
 | **Utils** | `app/utils/` | Reusable helpers. Promote to a service if they grow too large. |
 
 ## Tech Stack
 
 - **Framework:** FastAPI
-- **ORM:** SQLAlchemy
-- **Validation:** Pydantic
-- **Migrations:** Alembic
+- **ORM:** SQLAlchemy 2 (async) + asyncpg / aiosqlite
+- **Validation:** Pydantic v2
+- **Migrations:** Alembic (async)
 - **Server:** Uvicorn
-- **Config:** python-dotenv + Pydantic BaseSettings
-- **Testing:** pytest, httpx, pytest-asyncio
-
-## Principles
-
-- **Separation of concerns** -- each layer has a single, clear responsibility
-- **Testability** -- business logic is decoupled from the framework and database
-- **Flexibility** -- swap the framework, database, or auth provider with minimal pain
-- **Scalability** -- adding features doesn't require rewriting the core
-- **Start minimal** -- add layers only as the project grows; clarity over ceremony
+- **Auth:** PyJWT
+- **Logging:** structlog
+- **Package manager:** uv
+- **Linter/formatter:** Ruff
+- **Type checker:** mypy (strict)
+- **Testing:** pytest + httpx + pytest-asyncio + pytest-cov
 
 ## Getting Started
 
+You need [`uv`](https://docs.astral.sh/uv/) installed. Everything else (including Python 3.13) is fetched for you.
+
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
+# First-time onboarding: installs deps, sets up pre-commit, copies .env.example -> .env
+make dev-setup
 
-# Install dependencies
-pip install -r requirements.txt
+# Generate a real secret and put it in .env
+echo "SECRET_KEY=$(openssl rand -hex 32)" >> .env
 
-# Run the server
-uvicorn app.main:app --reload
+# Apply migrations and run the dev server
+make migrate
+make dev
 ```
+
+Visit <http://localhost:8000/docs>.
+
+## Run with Docker
+
+```bash
+cp .env.example .env
+# set SECRET_KEY in .env
+
+docker compose up --build
+```
+
+The `app` service waits for Postgres to be healthy, runs `alembic upgrade head` on startup, and then launches uvicorn on port 8000.
+
+## Make Targets
+
+| Target | What it does |
+|---|---|
+| `make help` | List all targets |
+| `make install` | `uv sync` |
+| `make dev-setup` | Install + pre-commit + copy `.env.example` to `.env` |
+| `make dev` | Run uvicorn with `--reload` |
+| `make test` | Run all tests with coverage (80% floor) |
+| `make test-unit` / `make test-integration` | Run a subset |
+| `make lint` | Ruff check + format check |
+| `make fmt` | Ruff format + safe fixes |
+| `make typecheck` | mypy `--strict` against `app/` |
+| `make migrate` | `alembic upgrade head` |
+| `make migration m="..."` | Generate an autogenerated revision |
+| `make docker-build` / `make docker-up` / `make docker-down` | Docker Compose lifecycle |
+| `make clean` | Remove caches, coverage, and local DB files |
+
+## Principles
+
+- **Separation of concerns** — each layer has a single responsibility
+- **Testability** — business logic is decoupled from the framework and database
+- **Transactional boundary lives at the session** — repositories expose CRUD primitives; `get_db` commits on success and rolls back on exception
+- **Migrations as source of truth** — `Base.metadata.create_all` is not called in production; Alembic owns the schema
+- **No placeholder secrets** — settings reject `SECRET_KEY` values containing `replace-with` or `change-me`
 
 ## Agentic Development
 

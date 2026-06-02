@@ -1,21 +1,40 @@
+import os
+
+os.environ.setdefault("SECRET_KEY", "test-key-pytest-only-not-a-real-secret")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+os.environ.setdefault("LOG_LEVEL", "WARNING")
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.database import Base, get_db
 from app.main import app
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_async_engine(TEST_DATABASE_URL)
 TestSession = async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def override_get_db():
     async with TestSession() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest_asyncio.fixture(autouse=True, scope="session")
+async def _override_dependencies():
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
